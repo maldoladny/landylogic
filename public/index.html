@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LogiCheck - Control Total de Picking</title>
+    <style>
+        body { font-family: Arial, sans-serif; background-color: #f4f7f6; margin: 0; padding: 20px; color: #333; }
+        .container { max-width: 1000px; margin: 0 auto; background: white; padding: 25px; border-radius: 8px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
+        h1 { color: #2c3e50; text-align: center; margin-bottom: 25px; }
+        .section { margin-bottom: 20px; padding: 15px; border: 1px solid #ddd; border-radius: 6px; background: #fafafa; }
+        h3 { margin-top: 0; color: #34495e; }
+        input[type="text"], input[type="password"], input[type="file"] { width: 100%; padding: 10px; font-size: 14px; border: 1px solid #ccc; border-radius: 4px; box-sizing: border-box; margin-top: 5px; margin-bottom: 10px; }
+        button { padding: 10px 15px; font-size: 15px; background-color: #3498db; color: white; border: none; border-radius: 4px; cursor: pointer; }
+        button:hover { background-color: #2980b9; }
+        .operador-btn { background-color: #9b59b6; margin: 5px; }
+        .operador-btn:hover { background-color: #8e44ad; }
+        .admin-btn { background-color: #e67e22; }
+        .admin-btn:hover { background-color: #d35400; }
+        .print-btn { background-color: #34495e; margin-left: 10px; }
+        .print-btn:hover { background-color: #2c3e50; }
+        .delete-btn { background-color: #e74c3c; padding: 5px 10px; font-size: 12px; }
+        .delete-btn:hover { background-color: #c0392b; }
+        table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+        th, td { border: 1px solid #ddd; padding: 10px; text-align: center; font-size: 14px; }
+        th { background-color: #2c3e50; color: white; }
+        .success { background-color: #d4edda; color: #155724; padding: 15px; border-radius: 4px; margin-top: 15px; text-align: center; font-weight: bold; display: none; }
+        .error { background-color: #f8d7da; color: #721c24; padding: 15px; border-radius: 4px; margin-top: 15px; text-align: center; font-weight: bold; display: none; }
+        #btnFinalizar { background-color: #2ecc71; width: 100%; margin-top: 20px; display: none; font-size: 18px; }
+        #btnFinalizar:hover { background-color: #27ae60; }
+        .badge { background: #e67e22; color: white; padding: 3px 8px; border-radius: 12px; font-size: 12px; }
+        .badge-completado { background: #27ae60; color: white; padding: 3px 8px; border-radius: 12px; font-size: 12px; }
+        .badge-proceso { background: #3498db; color: white; padding: 3px 8px; border-radius: 12px; font-size: 12px; }
+
+        @media print {
+            body * { visibility: hidden; }
+            #printableArea, #printableArea * { visibility: visible; }
+            #printableArea { position: absolute; left: 0; top: 0; width: 100%; background: white; padding: 20px; }
+            .no-print { display: none !important; }
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>LogiCheck - Sistema de Picking</h1>
+
+    <div id="vistaSeleccion" class="section" style="text-align: center;">
+        <h3>Selecciona tu Modo de Acceso</h3>
+        <button class="admin-btn" onclick="mostrarLoginAdmin()">Panel de Administrador / Supervisor</button>
+        <button class="operador-btn" onclick="cambiarVista('operador')">Área de Operadores (Picking)</button>
+    </div>
+
+    <div id="loginAdmin" class="section" style="display:none; max-width: 400px; margin: 0 auto; border-left: 5px solid #e67e22;">
+        <button onclick="cambiarVista('menu')" style="background-color: #7f8c8d; margin-bottom: 15px;" class="no-print">&larr; Volver</button>
+        <h3>Acceso de Administrador</h3>
+        <label>Usuario:</label>
+        <input type="text" id="loginUser" placeholder="Usuario admin...">
+        <label>Contraseña:</label>
+        <input type="password" id="loginPass" placeholder="Contraseña...">
+        <button class="admin-btn" onclick="verificarLogin()" style="width: 100%;">Ingresar al Panel</button>
+        <div id="loginError" class="error" style="margin-top:10px;">Usuario o contraseña incorrectos.</div>
+    </div>
+
+    <div id="panelAdmin" class="section" style="display:none; border-left: 5px solid #e67e22;">
+        <button onclick="cambiarVista('menu')" style="background-color: #7f8c8d; margin-bottom: 15px;" class="no-print">&larr; Cerrar Sesión Admin</button>
+        
+        <h3>Panel de Supervisor: Carga de Archivo Profit</h3>
+        <input type="file" id="archivoProfit" accept=".xlsx, .xls, .csv">
+        <button onclick="subirArchivo()" style="margin-top: 10px;">Subir y Sincronizar Órdenes</button>
+
+        <h3 style="margin-top: 30px;">Gestión de Operadores Activos</h3>
+        <div style="display: flex; gap: 10px; margin-bottom: 10px;">
+            <input type="text" id="nuevoOperadorNombre" placeholder="Nombre del nuevo operador..." style="margin-top:0;">
+            <button onclick="agregarOperador()" style="background-color: #2ecc71; white-space: nowrap;">Agregar Operador</button>
+        </div>
+        <div id="listaOperadoresAdmin" style="display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 20px;"></div>
+
+        <h3 style="margin-top: 20px;">Auditoría General: ¿Quién hizo cada Picking?</h3>
+        <table>
+            <thead>
+                <tr>
+                    <th>Nota / Cliente</th>
+                    <th>Estado Actual</th>
+                    <th>Operador Asignado</th>
+                    <th>Total Productos</th>
+                </tr>
+            </thead>
+            <tbody id="tablaAuditoria">
+                <tr><td colspan="4">Cargando auditoría...</td></tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div id="panelOperador" class="section" style="display:none; border-left: 5px solid #3498db;">
+        <button onclick="cambiarVista('menu')" style="background-color: #7f8c8d; margin-bottom: 15px;" class="no-print">&larr; Cambiar de Operador / Menú</button>
+        <h3>Área de Picking: Selecciona tu Usuario</h3>
+        <div id="botonesOperadoresContainer"></div>
+        <div id="infoOperadorActivo" style="margin-top: 10px; font-weight: bold; color: #2980b9;"></div>
+
+        <div id="seccionTrabajo" style="display:none; margin-top: 20px; border-top: 1px dashed #ccc; padding-top: 15px;">
+            <h3 id="tituloAreaTrabajo">Órdenes Pendientes</h3>
+            <div id="listaPedidosPendientes">
+                <div id="botonesPedidosContainer"></div>
+            </div>
+
+            <div id="printableArea">
+                <div id="interfazEscaneo" style="display:none; margin-top: 15px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <h4 id="detallePedidoActivo" style="color: #27ae60; margin: 0;"></h4>
+                        <button class="print-btn no-print" onclick="window.print()">🖨️ Imprimir Orden</button>
+                    </div>
+                    <p class="no-print" style="margin-top: 10px;">Escanea los productos uno a uno con la pistola:</p>
+                    <input type="text" id="txtEscanerItem" class="no-print" placeholder="Escanea código SKU..." onkeypress="manejarEscaneo(event)">
+                    
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>SKU</th>
+                                <th>Descripción</th>
+                                <th>Esperado</th>
+                                <th class="no-print">Escaneado</th>
+                                <th class="no-print">Estado</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tablaItems"></tbody>
+                    </table>
+
+                    <div id="mensajeAlerta" class="error no-print"></div>
+                    <div id="mensajeExito" class="success no-print">¡Verificación exitosa! Conteo exacto completado.</div>
+
+                    <button id="btnFinalizar" class="no-print" onclick="finalizarOrden()">Guardar y Cerrar Nota</button>
+                    <br class="no-print">
+                    <button class="no-print" onclick="cancelarOrdenActual()" style="background-color: #95a5a6; margin-top: 10px;">Regresar a la lista</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    let operadorActual = null;
+    let pedidoEnCursoKey = null;
+    let datosGlobales = { ordenes: {}, operadores: [] };
+
+    setInterval(sincronizarDatos, 3000);
+
+    function cambiarVista(vista) {
+        document.getElementById("vistaSeleccion").style.display = vista === 'menu' ? "block" : "none";
+        document.getElementById("loginAdmin").style.display = "none";
+        document.getElementById("panelAdmin").style.display = vista === 'admin' ? "block" : "none";
+        document.getElementById("panelOperador").style.display = vista === 'operador' ? "block" : "none";
+        
+        if (vista === 'admin' || vista === 'operador') sincronizarDatos();
+        if (vista === 'menu') {
+            operadorActual = null;
+            pedidoEnCursoKey = null;
+        }
+    }
+
+    function mostrarLoginAdmin() {
+        document.getElementById("vistaSeleccion").style.display = "none";
+        document.getElementById("loginAdmin").style.display = "block";
+        document.getElementById("loginUser").value = "";
+        document.getElementById("loginPass").value = "";
+        document.getElementById("loginError").style.display = "none";
+    }
+
+    function verificarLogin() {
+        let u = document.getElementById("loginUser").value.trim();
+        let p = document.getElementById("loginPass").value.trim();
+        
+        if (u === "admin" && p === "1234") {
+            document.getElementById("loginAdmin").style.display = "none";
+            cambiarVista('admin');
+        } else {
+            document.getElementById("loginError").style.display = "block";
+        }
+    }
+
+    async function sincronizarDatos() {
+        try {
+            let res = await fetch('/api/estado');
+            datosGlobales = await res.json();
+            
+            if (document.getElementById("panelAdmin").style.display === "block") {
+                actualizarTablaAuditoria();
+                actualizarListaOperadoresAdmin();
+            }
+
+            if (document.getElementById("panelOperador").style.display === "block") {
+                actualizarBotonesOperadores();
+                if (operadorActual) {
+                    actualizarListaPedidos();
+                    if (pedidoEnCursoKey && datosGlobales.ordenes[pedidoEnCursoKey]) {
+                        actualizarTablaEscaneo();
+                        verificarEstadoCompletado();
+                    }
+                }
+            }
+        } catch (e) { console.error(e); }
+    }
+
+    function actualizarListaOperadoresAdmin() {
+        const container = document.getElementById("listaOperadoresAdmin");
+        container.innerHTML = "";
+        datosGlobales.operadores.forEach(op => {
+            let div = document.createElement("div");
+            div.style.cssText = "background: #fff; border: 1px solid #ccc; padding: 5px 10px; border-radius: 4px; display: flex; align-items: center; gap: 8px;";
+            div.innerHTML = `<span>${op}</span> <button class="delete-btn" onclick="eliminarOperador('${op}')">Eliminar</button>`;
+            container.appendChild(div);
+        });
+    }
+
+    async function agregarOperador() {
+        let input = document.getElementById("nuevoOperadorNombre");
+        let nombre = input.value.trim();
+        if (!nombre) return alert("Escribe un nombre válido");
+
+        let res = await fetch('/api/operadores', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ nombre })
+        });
+        let data = await res.json();
+        if (data.success) {
+            input.value = "";
+            sincronizarDatos();
+        } else {
+            alert(data.error);
+        }
+    }
+
+    async function eliminarOperador(nombre) {
+        if (!confirm(`¿Seguro que deseas eliminar a ${nombre}?`)) return;
+        await fetch('/api/operadores', {
+            method: 'DELETE',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ nombre })
+        });
+        sincronizarDatos();
+    }
+
+    function actualizarBotonesOperadores() {
+        const container = document.getElementById("botonesOperadoresContainer");
+        container.innerHTML = "";
+        datosGlobales.operadores.forEach(op => {
+            let btn = document.createElement("button");
+            btn.className = "operador-btn";
+            btn.innerText = `Operador: ${op}`;
+            btn.onclick = () => seleccionarOperador(op);
+            container.appendChild(btn);
+        });
+    }
+
+    function actualizarTablaAuditoria() {
+        const tbody = document.getElementById("tablaAuditoria");
+        tbody.innerHTML = "";
+        let keys = Object.keys(datosGlobales.ordenes);
+
+        if (keys.length === 0) {
+            tbody.innerHTML = "<tr><td colspan='4'>No hay órdenes cargadas en el sistema.</td></tr>";
+            return;
+        }
+
+        keys.forEach(key => {
+            let orden = datosGlobales.ordenes[key];
+            let badgeEstado = `<span class="badge-proceso">${orden.estado}</span>`;
+            if (orden.estado === "COMPLETADO") badgeEstado = `<span class="badge-completado">COMPLETADO</span>`;
+            if (orden.estado === "PENDIENTE") badgeEstado = `<span class="badge">PENDIENTE</span>`;
+
+            let operadorInfo = orden.operadorAsignado ? `<b>${orden.operadorAsignado}</b>` : '<i>Nadie (Sin tomar)</i>';
+
+            let tr = document.createElement("tr");
+            tr.innerHTML = `
+                <td>${orden.titulo}</td>
+                <td>${badgeEstado}</td>
+                <td>${operadorInfo}</td>
+                <td>${orden.items.length} productos</td>
+            `;
+            tbody.appendChild(tr);
+        });
+    }
+
+    async function subirArchivo() {
+        let input = document.getElementById('archivoProfit');
+        if (!input.files[0]) return alert('Selecciona un archivo primero');
+
+        let formData = new FormData();
+        formData.append('archivo', input.files[0]);
+
+        let res = await fetch('/api/cargar-excel', { method: 'POST', body: formData });
+        let data = await res.json();
+        if (data.success) {
+            alert(`¡Carga exitosa! Se procesaron ${data.total} notas.`);
+            sincronizarDatos();
+        } else {
+            alert('Error: ' + data.error);
+        }
+    }
+
+    function seleccionarOperador(nombre) {
+        operadorActual = nombre;
+        document.getElementById("infoOperadorActivo").innerText = `Operador activo: ${nombre}`;
+        document.getElementById("seccionTrabajo").style.display = "block";
+        document.getElementById("interfazEscaneo").style.display = "none";
+        sincronizarDatos();
+    }
+
+    function actualizarListaPedidos() {
+        const container = document.getElementById("botonesPedidosContainer");
+        container.innerHTML = "";
+        let hayDisponibles = false;
+
+        for (let key in datosGlobales.ordenes) {
+            let orden = datosGlobales.ordenes[key];
+            if (orden.estado === "PENDIENTE" || (orden.estado === "EN_PROCESO" && orden.operadorAsignado === operadorActual)) {
+                hayDisponibles = true;
+                let div = document.createElement("div");
+                div.style.cssText = "background: white; padding: 10px; margin-bottom: 8px; border: 1px solid #ddd; border-radius: 4px; display: flex; justify-content: space-between; align-items: center;";
+                let badge = orden.operadorAsignado === operadorActual ? '<span class="badge">Tu Orden Activa</span>' : '';
+                div.innerHTML = `<div><strong>${orden.titulo}</strong> (${orden.items.length} productos) ${badge}</div><button onclick="iniciarPicking('${key}')">${orden.operadorAsignado === operadorActual ? 'Continuar' : 'Tomar Nota'}</button>`;
+                container.appendChild(div);
+            }
+        }
+        if (!hayDisponibles) container.innerHTML = "<p style='color: #7f8c8d;'>No hay notas disponibles.</p>";
+    }
+
+    async function iniciarPicking(key) {
+        let res = await fetch('/api/tomar-orden', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ key, operador: operadorActual })
+        });
+        let data = await res.json();
+        if (data.success) {
+            pedidoEnCursoKey = key;
+            document.getElementById("listaPedidosPendientes").style.display = "none";
+            document.getElementById("interfazEscaneo").style.display = "block";
+            document.getElementById("detallePedidoActivo").innerText = `Armando: ${datosGlobales.ordenes[key].titulo} (Operador: ${operadorActual})`;
+            document.getElementById("txtEscanerItem").value = "";
+            document.getElementById("txtEscanerItem").focus();
+            sincronizarDatos();
+        } else {
+            alert(data.error);
+            sincronizarDatos();
+        }
+    }
+
+    async function cancelarOrdenActual() {
+        if (pedidoEnCursoKey) {
+            await fetch('/api/finalizar-orden', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ key: pedidoEnCursoKey, estado: "PENDIENTE" })
+            });
+        }
+        pedidoEnCursoKey = null;
+        document.getElementById("interfazEscaneo").style.display = "none";
+        document.getElementById("listaPedidosPendientes").style.display = "block";
+        sincronizarDatos();
+    }
+
+    async function manejarEscaneo(event) {
+        if (event.key === "Enter" && pedidoEnCursoKey) {
+            let sku = document.getElementById("txtEscanerItem").value.trim();
+            document.getElementById("txtEscanerItem").value = "";
+
+            let res = await fetch('/api/escanear', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ key: pedidoEnCursoKey, sku })
+            });
+            let data = await res.json();
+            if (data.success) {
+                datosGlobales.ordenes[pedidoEnCursoKey].items = data.items;
+                ocultarMensajes();
+                actualizarTablaEscaneo();
+                verificarEstadoCompletado();
+            } else {
+                mostrarAlerta(data.error);
+            }
+        }
+    }
+
+    function actualizarTablaEscaneo() {
+        if (!pedidoEnCursoKey || !datosGlobales.ordenes[pedidoEnCursoKey]) return;
+        const tbody = document.getElementById("tablaItems");
+        tbody.innerHTML = "";
+        let orden = datosGlobales.ordenes[pedidoEnCursoKey];
+
+        orden.items.forEach(item => {
+            let estadoTexto = "Pendiente", color = "orange";
+            if (item.escaneado === item.esperado) { estadoTexto = "Completo"; color = "green"; }
+            else if (item.escaneado > item.esperado) { estadoTexto = "¡Sobrante!"; color = "red"; }
+            let tr = document.createElement("tr");
+            tr.innerHTML = `<td>${item.sku}</td><td>${item.nombre}</td><td><b>${item.esperado}</b></td><td class="no-print"><b>${item.escaneado}</b></td><td class="no-print" style="color:${color}; font-weight:bold;">${estadoTexto}</td>`;
+            tbody.appendChild(tr);
+        });
+    }
+
+    function verificarEstadoCompletado() {
+        if (!pedidoEnCursoKey || !datosGlobales.ordenes[pedidoEnCursoKey]) return;
+        let orden = datosGlobales.ordenes[pedidoEnCursoKey];
+        let todoExacto = true, haySobrantes = false;
+        orden.items.forEach(item => {
+            if (item.escaneado !== item.esperado) todoExacto = false;
+            if (item.escaneado > item.esperado) haySobrantes = true;
+        });
+        document.getElementById("btnFinalizar").style.display = (todoExacto && !haySobrantes) ? "block" : "none";
+        document.getElementById("mensajeExito").style.display = (todoExacto && !haySobrantes) ? "block" : "none";
+    }
+
+    async function finalizarOrden() {
+        if (!pedidoEnCursoKey) return;
+        await fetch('/api/finalizar-orden', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ key: pedidoEnCursoKey, estado: "COMPLETADO" })
+        });
+        alert(`¡Nota empacada con éxito por ${operadorActual}!`);
+        pedidoEnCursoKey = null;
+        document.getElementById("interfazEscaneo").style.display = "none";
+        document.getElementById("listaPedidosPendientes").style.display = "block";
+        sincronizarDatos();
+    }
+
+    function mostrarAlerta(texto) {
+        let alerta = document.getElementById("mensajeAlerta");
+        alerta.innerText = texto;
+        alerta.style.display = "block";
+    }
+    function ocultarMensajes() {
+        document.getElementById("mensajeAlerta").style.display = "none";
+        document.getElementById("mensajeExito").style.display = "none";
+    }
+</script>
+</body>
+</html>
